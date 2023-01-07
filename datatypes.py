@@ -19,6 +19,13 @@ class primary:
             autoincrement = False
         self.type = type
         self.autoincrement = autoincrement
+primary_key = primary
+
+class foreign:
+    def __init__(self, table, column=None):
+        self.table = table
+        self.column = column
+foreign_key = foreign
 
 class unique:
     def __init__(self, type):

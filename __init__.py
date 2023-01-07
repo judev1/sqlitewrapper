@@ -24,7 +24,13 @@ SOFTWARE.
 
 from . import databaseobjects, errors
 from . import datatypes as types
-from .databaseobjects import database
-from .datatypes import *
+from .databaseobjects import DatabaseObject, TableObject
 
-__version__ = '0.1.1'
+__version__ = '0.1.2'
+
+def open(path, table=None, daemon=True, await_completion=True) -> DatabaseObject or TableObject:
+    """ Opens a database or table object. """
+    database = DatabaseObject(path, daemon, await_completion)
+    if table is None:
+        return database
+    return TableObject(database, table)

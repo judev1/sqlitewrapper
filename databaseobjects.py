@@ -10,12 +10,6 @@ from .errors import *
 
 # TODO: in-code documentation
 
-def database(path, table=None, daemon=True, await_completion=True):
-    database = DatabaseObject(path, daemon, await_completion)
-    if not table:
-        return database
-    return TableObject(database, table)
-
 def _serial():
     serial = ""
     while len(serial) != 8:
@@ -35,6 +29,7 @@ class ExecuctionObject:
             raise InstanceError("instance is not a DatabaseObject")
 
     def waitForQueue(self):
+        """ Waits until the queue is empty. """
         while self.alive:
             if not self._toRead and not self._toWrite:
                 return
@@ -145,13 +140,20 @@ class ExecuctionObject:
 
 # TODO: pragma values
 class DatabaseObject(ExecuctionObject):
+    """ A database object which allows interaction with an SQLite database.
+
+        Parameters
+         - path: The path to the database file.
+         - daemon: Whether the database should run in a separate thread.
+         - await_completion - Whether the database should wait for queries to complete before returning.
+    """
 
     alive = False
 
     def __init__(self, path, daemon=True, await_completion=True):
         super(DatabaseObject, self).__init__()
-        if not path.endswith(".pydb"):
-            path += ".pydb"
+        if not path.endswith(".db"):
+            path += ".db"
         self.path = path
         self.name = path.replace("\\", "/").split("/")[-1][:-5]
         self.daemon = daemon
@@ -159,16 +161,36 @@ class DatabaseObject(ExecuctionObject):
         self.start()
 
     def table(self, name):
+        """ Returns a table object.
+                Parameters
+                - name: The name of the table.
+            """
         table = TableObject(self, name)
         if not table.exists:
             raise TableError("table does not exist")
         return table
 
     def create(self, name, columns=None, await_completion=True, must_not_exist=False, **kwargs):
+        """ Creates a table within the database.
+
+            Parameters
+             - name: The name of the table.
+             - columns: A dictionary containting the columns and their types.
+             - await_completion: Whether to wait for the table to be created before returning.
+             - must_not_exist: Whether to raise an error if the table already exists.
+             - kwargs: Alternatively, the columns and their types can be passed as keyword arguments.
+
+             NOTE: If both columns and kwargs are passed, kwargs will be used.
+             NOTE: kwargs cannot share the same name with a named arg or kwarg.
+        """
+
+        if kwargs:
+            columns = kwargs
+
         if must_not_exist:
             if TableObject(self, name).exists:
                 raise TableError("table already exists")
-        return CreateTableObject(self, name, columns, **kwargs).run(await_completion)
+        return CreateTableObject(self, name, columns).run(await_completion)
 
     # TODO: optimse database
     def optimise(self):
@@ -176,6 +198,7 @@ class DatabaseObject(ExecuctionObject):
 
     @property
     def tables(self):
+        """ Returns a list of all tables in the database. """
         self.waitForQueue()
         query = f"SELECT name FROM sqlite_master WHERE type='table'"
         tables = list()
@@ -185,9 +208,11 @@ class DatabaseObject(ExecuctionObject):
 
     @property
     def queue(self):
+        """ Returns the number of queries in the queue. """
         return len(self._toRead + self._toWrite)
 
     def start(self):
+        """ Initiates a connection to the database. """
         if self.alive:
             raise DataError("DatabaseObject has already been started")
         self.alive = True
@@ -195,8 +220,9 @@ class DatabaseObject(ExecuctionObject):
         self.connection = sqlite3.connect(self.path, check_same_thread=False)
 
     def close(self, ignore_queue=False):
+        """ Closes the connection to the database. """
         if not self.alive:
-            raise DataError("DatabaseObject is already closed")#
+            raise DataError("DatabaseObject is already closed")
         if not ignore_queue:
             self.waitForQueue()
         self.alive = False
@@ -215,6 +241,12 @@ class DatabaseObject(ExecuctionObject):
         return f"<{self.name} database object: {tables} tables>"
 
 class TableObject:
+    """ A table object is used to interact with a table within a database.
+
+        Parameters
+         - database: The database object to use.
+         - table: The name of the table.
+    """
 
     def __init__(self, database, table):
         super(TableObject, self).__init__()
@@ -231,6 +263,11 @@ class TableObject:
         self.database.close()
 
     def rename(self, name):
+        """ Renames the table.
+
+            Parameters
+             - name: The new name of the table.
+        """
         if name in self.database.tables:
             raise TableError("table already exists")
         query = f"ALTER TABLE {self.name} RENAME TO '{name}'"
@@ -238,42 +275,76 @@ class TableObject:
         self.name = name
 
     def delete(self):
+        """ Deletes the table. """
         query = f"DROP TABLE {self.name}"
         RawWriteObject(query, table=self).run()
         del self
 
     def addColumn(self, *values, **kwargs):
+        """ Adds a column to the table.
+
+            Parameters
+             - values: A dictionary containg the column name and its types.
+             - kwargs: Alternatively, the column and its type can be passed as a keyword argument.
+        """
         # TODO: refitting table
         AddColumnObject(self, values, refit=False, **kwargs).run()
 
     # TODO: remove column
     def removeColumn(self):
+        """ Removes a column from the table.
+
+            Note: This method is not yet implemented.
+        """
         raise NotImplemented("removing columns has not yet been implemented")
 
     def add(self, values=None, **kwargs):
+        """ Adds a row to the table.
+
+            Parameters
+                - values: A dictionary of columns and the values to add.
+        """
         AddRowObject(self, values, **kwargs).run()
 
     def remove(self):
+        """ Starts a query to remove a row from the table. """
         return RemoveRowObject(self)
 
     def get(self, *items):
+        """ Starts a query to get the first result from the table.
+
+            Parameters
+             - items: The columns to get. If none are specified, all columns will be returned.
+        """
         return GetObject(self, "first", *items)
     getFirst = get
 
     def getAll(self, *items):
+        """ Starts a query to get all results from the table.
+
+            Parameters
+             - items: The columns to get. If none are specified, all columns will be returned.
+        """
         return GetObject(self, "all", *items)
 
     def set(self, *values, **kwargs):
+        """ Starts a query to set a value in the table.
+
+            Parameters
+             - values: A dictionary of columns and the values to set.
+        """
         return SetObject(self, *values, **kwargs)
 
     @property
     def exists(self):
+        """ Returns whether the table exists. """
         self.database.waitForQueue()
         query = f"SELECT name FROM sqlite_master WHERE type='table' AND name='{self.name}'"
         return bool(RawReadObject(query, table=self).run())
 
     @property
     def columns(self):
+        """ Returns a list of all columns in the table. """
         self.database.waitForQueue()
         query = f"SELECT name FROM PRAGMA_TABLE_INFO('{self.name}')"
         columns = list()
@@ -282,7 +353,18 @@ class TableObject:
         return columns
 
     @property
+    def columns_types(self):
+        """ Returns a list of all columns and their types in the table. """
+        self.database.waitForQueue()
+        query = f"SELECT name, type FROM PRAGMA_TABLE_INFO('{self.name}')"
+        columns = dict()
+        for item in RawReadObject(query, table=self).run():
+            columns[item[0]] = item[1]
+        return columns
+
+    @property
     def rows(self):
+        """ Returns the number of rows in the table. """
         self.database.waitForQueue()
         query = f"SELECT COUNT(*) AS count FROM {self.name}"
         return RawReadObject(query, table=self).run()[0][0]
@@ -334,18 +416,21 @@ class LogicObject:
         self.conjunctive = conjunctive
 
     def eq(self, value):
+        """ Checks if the value is equal to the specified value. """
         self.operation = "="
         self.value = value
         return self._filter
     equalto = equal = eq
 
     def neq(self, value):
+        """ Checks if the value is not equal to the specified value. """
         self.operation = "!="
         self.value = value
         return self._filter
     notequalto = notequal = eq
 
     def gt(self, value):
+        """ Checks if the value is greater than the specified value. """
         self._isNumber(value)
         self.operation = ">"
         self.value = value
@@ -353,6 +438,7 @@ class LogicObject:
     greaterthan = gt
 
     def lt(self, value):
+        """ Checks if the value is less than the specified value. """
         self._isNumber(value)
         self.operation = "<"
         self.value = value
@@ -360,6 +446,7 @@ class LogicObject:
     lessthan = lt
 
     def gteq(self, value):
+        """ Checks if the value is greater than or equal to the specified value. """
         self._isNumber(value)
         self.operation = ">="
         self.value = value
@@ -367,6 +454,7 @@ class LogicObject:
     greaterthanorequalto = gteq
 
     def lteq(self, value):
+        """ Checks if the value is less than or equal to the specified value. """
         self._isNumber(value)
         self.operation = "<="
         self.value = value
@@ -374,12 +462,14 @@ class LogicObject:
     lessthanorequalto = lteq
 
     def like(self, value):
+        """ Checks if the value is similar to the specified value. """
         self._isString(value)
         self.operation = "LIKE"
         self.value = value
         return self._filter
 
     def nlike(self, value):
+        """ Checks if the value is not similar to the specified value. """
         self._isString(value)
         self.operation = "NOT LIKE"
         self.value = value
@@ -387,12 +477,14 @@ class LogicObject:
     notlike = nlike
 
     def contains(self, value):
+        """ Checks if the value contains the specified value. """
         self._isString(value)
         self.operation = "LIKE"
         self.value =  "%" + value + "%"
         return self._filter
 
     def ncontains(self, value):
+        """ Checks if the value does not contain the specified value. """
         self._isString(value)
         self.operation = "NOT LIKE"
         self.value =  "%" + value + "%"
@@ -400,12 +492,14 @@ class LogicObject:
     notcontains = ncontains
 
     def startswith(self, value):
+        """ Checks if the value starts with the specified value. """
         self._isString(value)
         self.operation = "LIKE"
         self.value = value + "%"
         return self._filter
 
     def nstartswith(self, value):
+        """ Checks if the value does not start with the specified value. """
         self._isString(value)
         self.operation = "NOT LIKE"
         self.value = value + "%"
@@ -413,12 +507,14 @@ class LogicObject:
     notstartswith = nstartswith
 
     def endswith(self, value):
+        """ Checks if the value ends with the specified value. """
         self._isString(value)
         self.operation = "LIKE"
         self.value = "%" + value
         return self._filter
 
     def nendswith(self, value):
+        """ Checks if the value does not end with the specified value. """
         self._isString(value)
         self.operation = "NOT LIKE"
         self.value = "%" + value
@@ -426,6 +522,7 @@ class LogicObject:
     notendswith = nendswith
 
     def IN(self, *values):
+        """ Checks if the value is in the specified values. """
         if isinstance(values[0], (list, tuple, set)):
             values = values[0]
         self.operation = "IN"
@@ -433,6 +530,7 @@ class LogicObject:
         return self._filter
 
     def NOTIN(self, *values):
+        """ Checks if the value is not in the specified values. """
         if isinstance(values[0], (list, tuple, set)):
             values = values[0]
         self.operation = "NOT IN"
@@ -480,87 +578,106 @@ class FilterObject:
         self.filtered = list()
 
     def where(self, item):
+        """ Filters the query based on the specified item. """
         if not self.filtered:
             return LogicObject(self, item)
         raise LogicError("already performing logic")
 
     def eq(self, value):
+        """ Checks if the value is equal to the specified value. """
         assert self._isItem
         return LogicObject(self, self._getItem).eq(value)
 
     def neq(self, value):
+        """ Checks if the value is not equal to the specified value. """
         assert self._isItem
         return LogicObject(self, self._getItem).neq(value)
 
     def gt(self, value):
+        """ Checks if the value is greater than the specified value. """
         assert self._isItem
         return LogicObject(self, self._getItem).gt(value)
     greaterthan = gt
 
     def lt(self, value):
+        """ Checks if the value is less than the specified value. """
         assert self._isItem
         return LogicObject(self, self._getItem).lt(value)
     lessthan = lt
 
     def gteq(self, value):
+        """ Checks if the value is greater than or equal to the specified value. """
         assert self._isItem
         return LogicObject(self, self._getItem).gteq(value)
     greaterthanorequalto = gteq
 
     def lteq(self, value):
+        """ Checks if the value is less than or equal to the specified value. """
         assert self._isItem
         return LogicObject(self, self._getItem).lteq(value)
     lessthanorequalto = lteq
 
     def like(self, value):
+        """ Checks if the value is similar to the specified value. """
         assert self._isItem
         return LogicObject(self, self._getItem).like(value)
 
     def nlike(self, value):
+        """ Checks if the value is not similar to the specified value. """
         assert self._isItem
         return LogicObject(self, self._getItem).nlike(value)
 
     def contains(self, value):
+        """ Checks if the value contains the specified value. """
         assert self._isItem
         return LogicObject(self, self._getItem).contains(value)
 
     def ncontains(self, value):
+        """ Checks if the value does not contain the specified value. """
         assert self._isItem
         return LogicObject(self, self._getItem).ncontains(value)
     notcontains = ncontains
 
     def startswith(self, value):
+        """ Checks if the value starts with the specified value. """
         assert self._isItem
         return LogicObject(self, self._getItem).startswith(value)
 
     def nstartswith(self, value):
+        """ Checks if the value does not start with the specified value. """
         assert self._isItem
         return LogicObject(self, self._getItem).nstartswith(value)
     notstartswith = nstartswith
 
     def endswith(self, value):
+        """ Checks if the value ends with the specified value. """
         assert self._isItem
         return LogicObject(self, self._getItem).endswith(value)
 
     def nendswith(self, value):
+        """ Checks if the value does not end with the specified value. """
         assert self._isItem
         return LogicObject(self, self._getItem).nendswith(value)
     notendswith = nendswith
 
     def IN(self, *values):
+        """ Checks if the value is in the specified values. """
         assert self._isItem
         return LogicObject(self, self._getItem).IN(*values)
 
     def NOTIN(self, *values):
+        """ Checks if the value is not in the specified values. """
         assert self._isItem
         return LogicObject(self, self._getItem).NOTIN(*values)
 
     def AND(self, item):
+        """ Allows for multiple logic operations to be performed where all operations must be true. """
         if self.filtered:
             return LogicObject(self, item, conjunctive="AND")
         raise LogicError("no item to perform logic on")
 
     def OR(self, item):
+        """ Allows for multiple logic operations to be performed where only one of the operations must be true. """
         if self.filtered:
             return LogicObject(self, item, conjunctive="OR")
         raise LogicError("no item to perform logic on")
@@ -602,24 +719,36 @@ class SortObject:
         self.sortlimit = None
 
     def sort(self, *items):
+        """ Sorts the items by the specified items.
+
+            Parameters:
+             - items: The items to sort by.
+        """
         if isinstance(items[0], (list, tuple, set)):
             items = items[0]
         self.sorted = items
         return self
 
     def asc(self):
+        """ Sorts the items in ascending order. """
         if not self.sorted:
             raise SortError("items must be provided to sort by before using asc")
         self.order = "ASC"
         return self
 
     def desc(self):
+        """ Sorts the items in descending order. """
         if not self.sorted:
             raise SortError("items must be provided to sort by before using desc")
         self.order = "DESC"
         return self
 
     def limit(self, limit):
+        """ Limits the number of items returned.
+
+            Parameters:
+             - limit: The maximum number of items to return.
+        """
         if not self.sorted:
             raise SortError("items must be provided to sort before providing a limit")
         self.sortlimit = limit
@@ -637,6 +766,13 @@ class SortObject:
         return statement
 
 class RawReadObject(QueryObject):
+    """ Allows for raw read queries to be performed.
+
+        Parameters:
+         - rawquery: The raw query to perform.
+         - table: The table of the database to perform the query on.
+         - database: The database to perform the query on.
+    """
 
     type = "raw read"
 
@@ -661,6 +797,13 @@ class RawReadObject(QueryObject):
         return self.rawquery
 
 class RawWriteObject(QueryObject):
+    """ Allows for raw write queries to be performed.
+
+        Parameters:
+         - rawquery: The raw query to perform.
+         - table: The table of the database to perform the query on.
+         - database: The database to perform the query on.
+    """
 
     type = "raw write"
 
@@ -708,11 +851,30 @@ class CreateTableObject(QueryObject):
                 elif value.type not in [str, blob, int, float]:
                     raise TypeError(f"'{value.type}' is an invalid data type")
                 items[item] = value
+            elif isinstance(value, foreign):
+                if type(value.table) is str:
+                    if value.table not in database.tables:
+                        raise InstanceError(f"table '{value.table}' does not exist")
+                    value.table = database.table(value.table)
+                elif not isinstance(value.table, TableObject):
+                    raise InstanceError("table for foreign key is not a table name or a TableObject")
+                elif value.type not in [str, blob, int, float]:
+                    raise TypeError(f"'{value.type}' is an invalid data type")
+                if value.column is None:
+                    value.column = item
+                elif type(value.column) is not str:
+                    raise TypeError("column for foreign key is not a string or None")
+                if value.column not in value.table.columns:
+                    raise InstanceError(f"column '{value.column}' does not exist")
+                value.type = value.table.columns_types[value.column]
+                items[item] = value
             elif isinstance(value, (unique, default, null, notnull)):
                 if value.type not in [str, blob, int, float]:
                     raise TypeError(f"'{value.type}' is an invalid data type")
                 items[item] = value
-            elif value in [primary, str, blob, int, float]:
+            elif value is primary:
+                items[item] = primary()
+            elif value in [str, blob, int, float]:
                 items[item] = null(value)
             else:
                 raise TypeError(f"'{value}' is an invalid data type")
@@ -729,13 +891,7 @@ class CreateTableObject(QueryObject):
     def _query(self):
         query = f"CREATE TABLE IF NOT EXISTS {self.name} ("
         lines = list()
-        primary_count = 0
-        for item in self.items:
-            value = self.items[item]
-            if value.type is primary:
-                primary_count += 1
-            elif isinstance(value, primary):
-                primary_count += 1
+        autoincrement = False
         primaries = list()
         for item in self.items:
             line = item + " "
@@ -748,23 +904,15 @@ class CreateTableObject(QueryObject):
                 line += "REAL"
             elif value.type is blob:
                 line += "BLOB"
-            elif value.type is primary:
-                line += "INTEGER"
-                if primary_count == 1:
-                    line += " PRIMARY KEY"
-                else:
-                    line += " NOT NULL"
-                    primaries.append(item)
             if isinstance(value, primary):
                 if value.autoincrement:
-                    if primary_count == 1:
-                        line += " PRIMARY KEY AUTOINCREMENT"
-                    else:
-                        raise TypeError("cannot autoincrement primary key with two or more prmary keys."
-                                        " Try using the UNIQUE constraint for the other keys")
+                    autoincrement = True
+                    line += " INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT"
                 else:
                     line += " NOT NULL"
-                    primaries.append(item)
+                primaries.append(item)
+            elif isinstance(value, foreign):
+                line += " NOT NULL REFERENCES " + value.table.name + "(" + value.column + ")"
             elif isinstance(value, default):
                 line += " DEFAULT "
                 if value.type in [str, blob]:
@@ -772,15 +920,18 @@ class CreateTableObject(QueryObject):
                 elif value.type in [int, float]:
                     line += str(value.value)
             elif isinstance(value, unique):
-                line += " UNIQUE"
+                line += " NOT NULL UNIQUE"
             elif isinstance(value, notnull):
                 line += " NOT NULL"
             lines.append(line)
-        query += ", ".join(lines)
-        if primaries:
-            query += ", PRIMARY KEY (" + ", ".join(primaries) + ")"
-        query += ")"
-        return query
+        if autoincrement and len(primaries) > 1:
+            raise TypeError(
+                "cannot autoincrement primary key with two or more primary keys."
+                " Try using the 'unique' typing for the other keys"
+            )
+        elif not autoincrement and len(primaries) > 0:
+            lines.append("PRIMARY KEY (" + ", ".join(primaries) + ")")
+        return query + ", ".join(lines) + ")"
 
 class AddColumnObject(QueryObject):
 
@@ -792,7 +943,7 @@ class AddColumnObject(QueryObject):
             raise InstanceError("instance is not a TableObject")
 
         if not (values or kwargs):
-            raise InputError("you must provide values to be added")
+            raise InputError("you must provide a column to be added")
 
         if kwargs:
             values = kwargs
@@ -876,13 +1027,9 @@ class AddRowObject(QueryObject):
         if kwargs:
             values = kwargs
 
-        items = dict()
-        for item in values:
-            items[item] = values[item]
-
         self.database = table.database
         self.table = table
-        self.items = items
+        self.items = values.copy()
 
     # essentially useless
     def andAdd(self, **kwargs):
