@@ -1,7 +1,7 @@
 """
 MIT License
 
-Copyright (c) 2021 Jude
+Copyright (c) 2023 Jude
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -26,11 +26,11 @@ from . import databaseobjects, errors
 from . import datatypes as types
 from .databaseobjects import DatabaseObject, TableObject
 
-__version__ = '0.1.2'
+__version__ = '0.1.3'
 
-def open(path, table=None, daemon=True, await_completion=True) -> DatabaseObject or TableObject:
+def open(path, table=None, separate_thread=True, await_completion=True) -> DatabaseObject or TableObject:
     """ Opens a database or table object. """
-    database = DatabaseObject(path, daemon, await_completion)
+    database = DatabaseObject(path, separate_thread, await_completion)
     if table is None:
         return database
     return TableObject(database, table)

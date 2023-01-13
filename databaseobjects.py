@@ -37,14 +37,20 @@ class ExecuctionObject:
 
     def _read(self, object):
         object.serial = _serial()
-        self._toRead.append(object)
-        self._awaitCompletion(object, False)
+        if self.separate_thread:
+            self._toRead.append(object)
+            self._awaitCompletion(object, False)
+        else:
+            self._execute(object)
         return self._getResults(object)
 
     def _write(self, object):
         object.serial = _serial()
-        self._toWrite.append(object)
-        self._awaitCompletion(object, False)
+        if self.separate_thread:
+            self._toWrite.append(object)
+            self._awaitCompletion(object, False)
+        else:
+            self._execute(object)
 
     def _awaitCompletion(self, object, preference):
         await_completion = preference
@@ -144,19 +150,21 @@ class DatabaseObject(ExecuctionObject):
 
         Parameters
          - path: The path to the database file.
-         - daemon: Whether the database should run in a separate thread.
-         - await_completion - Whether the database should wait for queries to complete before returning.
+         - separate_thread: Whether the database should use a separate thread for execution.
+         - await_completion: Whether the database should wait for queries to complete before returning.
+
+         NOTE: If separate_thread is False, await_completion will be ignored.
     """
 
     alive = False
 
-    def __init__(self, path, daemon=True, await_completion=True):
+    def __init__(self, path, separate_thread=True, await_completion=True):
         super(DatabaseObject, self).__init__()
         if not path.endswith(".db"):
             path += ".db"
         self.path = path
         self.name = path.replace("\\", "/").split("/")[-1][:-5]
-        self.daemon = daemon
+        self.separate_thread = separate_thread
         self.await_completion = await_completion
         self.start()
 
@@ -216,7 +224,8 @@ class DatabaseObject(ExecuctionObject):
         if self.alive:
             raise DataError("DatabaseObject has already been started")
         self.alive = True
-        threading.Thread(target=self._executions, daemon=self.daemon).start()
+        if self.separate_thread:
+            threading.Thread(target=self._executions, daemon=True).start()
         self.connection = sqlite3.connect(self.path, check_same_thread=False)
 
     def close(self, ignore_queue=False):
@@ -907,7 +916,7 @@ class CreateTableObject(QueryObject):
             if isinstance(value, primary):
                 if value.autoincrement:
                     autoincrement = True
-                    line += " INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT"
+                    line += " NOT NULL PRIMARY KEY AUTOINCREMENT"
                 else:
                     line += " NOT NULL"
                 primaries.append(item)
