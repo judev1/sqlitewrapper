@@ -767,10 +767,7 @@ class SortObject:
         if not self.sorted:
             return ""
         statement = " ORDER BY "
-        # TODO: A quick fix for sorting.
         statement += ", ".join(self.sorted)
-        # statement += ", ".join("?" * len(self.sorted))
-        # self.inputs += self.sorted
         statement += " " + self.order
         if self.sortlimit is not None:
             statement += " LIMIT " + str(self.sortlimit)
