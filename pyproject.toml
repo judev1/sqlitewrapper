@@ -1,0 +1,20 @@
+[project]
+name = "sqlitewrapper"
+version = "0.1.4"
+requires-python = ">=3.7"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Jude Cowden", email = "jude.cowden@protonmail.com" }
+]
+description = "A python object-oriented wrapper for sqlite"
+readme = "README.md"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    'Intended Audience :: Developers',
+    'Topic :: Software Development :: Libraries'
+]
+
+[project.urls]
+"Homepage" = "https://github.com/judev1/sqlitewrapper"
+"Repository" = "https://github.com/judev1/sqlitewrapper"

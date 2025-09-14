@@ -19,17 +19,19 @@ class InputError(DatabaseError):
 class TypeError(InputError):
     pass
 
+class NotImplemented(DatabaseError):
+    pass
+
 class QueryError(DatabaseError):
 
     def __init__(self, error_message, query, inputs):
-
         self.error_message = error_message
         self.query = query
         self.inputs = inputs
 
     def __str__(self):
         message = self.error_message
-        message += "\nON QUERY: " + self.query
+        message += "\nOn query:\t" + self.query()
         if self.inputs:
-            message += "\nWITH VALUES: " + ", ".join(self.inputs)
+            message += "\nWith values:\t" + ", ".join(self.inputs)
         return message
