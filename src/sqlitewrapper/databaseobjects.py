@@ -533,10 +533,10 @@ class LogicObject:
         if self.conjunctive:
             logic += " " + self.conjunctive
         logic += f" {self.item} " + self.operation
-        if self.operation in ["IN", "NOTIN"]:
+        if self.operation in ["IN", "NOT IN"]:
             for value in self.value:
                 inputs.append(value)
-            logic += "(" + ", ".join("?" * len(self.value)) + ")"
+            logic += " (" + ", ".join("?" * len(self.value)) + ")"
         else:
             logic += " ?"
             inputs.append(self.value)
@@ -619,6 +619,16 @@ class LogicObject:
         assert isString(value)
         return self.add("NOT LIKE", "%" + value)
     notendswith = nendswith
+
+    def null(self) -> 'FilterObject':
+        """ Checks if the value is null. """
+        return self.add("IS", None)
+    isnull = null
+
+    def notnull(self) -> 'FilterObject':
+        """ Checks if the value is not null. """
+        return self.add("IS NOT", None)
+    isnotnull = notnull
 
     def IN(self, *values: Union[str, int, float, blob, None]) -> 'FilterObject':
         """ Checks if the value is in the specified values. """
@@ -1315,7 +1325,7 @@ class SetObject(WriteObject, FilterObject, SortObject):
             elif isinstance(value, concatenate):
                 values.append(f"{item}={item} || ?")
                 self.inputs.append(value.concatenate)
-            elif value is null or isinstance(value, null):
+            elif value is null or isinstance(value, null) or value is None:
                 values.append(f"{item}=NULL")
             else:
                 raise TypeError(f"'{type(value)}' is an invalid data type")
