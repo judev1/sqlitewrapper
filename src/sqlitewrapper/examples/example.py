@@ -1,4 +1,4 @@
-from sqlitewrapper import Database, Table, types
+from sqlitewrapper import Database, types
 
 db = Database("my_database")
 
@@ -98,3 +98,12 @@ print(c.run())
 
 c = a.where("my_table.id").gt(2)
 print(c.run())
+
+# Delete a row and verify it is gone
+r = items.get().where('items.id').eq(6).run()
+print(items.rows, r)
+
+items.remove().where('items.id').eq(6).run()
+
+r = items.get().where('items.id').eq(6).run()
+print(items.rows, r)

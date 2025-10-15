@@ -26,7 +26,7 @@ from . import databaseobjects, errors
 from . import datatypes as types
 from .databaseobjects import DatabaseObject, TableObject
 
-__version__ = '0.1.4'
+__version__ = '0.1.6'
 
 def Database(
     path: str,

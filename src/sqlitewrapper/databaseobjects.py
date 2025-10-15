@@ -1083,6 +1083,11 @@ class RemoveRowObject(WriteObject, FilterObject):
 
         self.table = table
 
+    def __copy__(self) -> 'RemoveRowObject':
+        obj = RemoveRowObject(self.table)
+        obj.filters = self.filters.copy()
+        return obj
+
     def run(self, await_completion: Optional[bool] = None):
         """ Runs the query to create the table.
 

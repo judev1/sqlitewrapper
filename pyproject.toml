@@ -1,6 +1,6 @@
 [project]
 name = "sqlitewrapper"
-version = "0.1.4"
+version = "0.1.6"
 requires-python = ">=3.7"
 license = "MIT"
 license-files = ["LICENSE"]
